@@ -127,6 +127,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Create process kernel page.
+  p->kpagetable = kpageinit();
+
   return p;
 }
 
@@ -150,6 +153,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  kpagefree(p->kpagetable);
 }
 
 // Create a user page table for a given process,
@@ -229,6 +233,8 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  
+  kpagecopy(p->pagetable, p->kpagetable, 0, p->sz);
 
   release(&p->lock);
 }
@@ -242,8 +248,12 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+  if(sz + n >= PLIC) {
+    return -1;
+  }
   if(n > 0){
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+      
       return -1;
     }
   } else if(n < 0){
@@ -294,6 +304,9 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+
+  // Copy user mapping to kernel pagetable
+  kpagecopy(np->pagetable, np->kpagetable, 0, np->sz);
 
   release(&np->lock);
 
@@ -471,6 +484,8 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
@@ -478,6 +493,7 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        kvminithart();
 
         found = 1;
       }
@@ -486,6 +502,7 @@ scheduler(void)
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
+      kvminithart();
       asm volatile("wfi");
     }
 #else
