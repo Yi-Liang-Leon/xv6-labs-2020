@@ -107,4 +107,5 @@ struct proc {
   int interval;
   uint64 handler;
   int tick;
+  struct trapframe intr_trapframe;
 };

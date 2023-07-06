@@ -79,6 +79,7 @@ usertrap(void)
     p->tick++;
     if(p->interval != 0 && p->tick == p->interval){
       p->tick = 0;
+      p->intr_trapframe = *p->trapframe;
       p->trapframe->epc = p->handler;
     }
   }

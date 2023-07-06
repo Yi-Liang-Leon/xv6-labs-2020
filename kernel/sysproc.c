@@ -117,5 +117,7 @@ sys_sigalarm(void)
 uint64
 sys_sigreturn(void)
 {
+  struct proc *p = myproc();
+  *p->trapframe = p->intr_trapframe;
   return 0;
 }
